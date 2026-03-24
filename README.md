@@ -9,7 +9,6 @@
   <a href="https://www.npmjs.com/package/claude-code-limiter"><img src="https://img.shields.io/npm/v/claude-code-limiter?color=blue&label=npm" alt="npm version"></a>
   <a href="https://github.com/howincodes/claude-code-limiter/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
   <a href="https://ghcr.io/howincodes/claude-code-limiter"><img src="https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker" alt="Docker"></a>
-  <a href="https://railway.app/template/YOUR_TEMPLATE_ID"><img src="https://railway.app/button.svg" alt="Deploy on Railway" height="20"></a>
 </p>
 
 <p align="center">
@@ -69,13 +68,7 @@ Hooks check local cache first (zero latency), sync with the server in the backgr
 
 The server must be reachable from every user's machine. Deploy it anywhere with a public URL.
 
-**Option A: One-click cloud deploy (easiest)**
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/YOUR_TEMPLATE_ID)
-
-Or use [Render](https://render.com), [Fly.io](https://fly.io), or any cloud provider. Set `ADMIN_PASSWORD` as an environment variable.
-
-**Option B: Docker on a VPS**
+**Option A: Docker on a VPS**
 ```bash
 docker run -d \
   --name claude-limiter \
@@ -85,14 +78,14 @@ docker run -d \
   ghcr.io/howincodes/claude-code-limiter:latest
 ```
 
-**Option C: Docker Compose with auto-HTTPS**
+**Option B: Docker Compose with auto-HTTPS**
 ```bash
 cd packages/server
 DOMAIN=limiter.yourdomain.com ADMIN_PASSWORD=secret docker compose up -d
 ```
 Caddy handles SSL certificates automatically.
 
-**Option D: Office/home network**
+**Option C: Office/home network**
 ```bash
 # Run on any machine on your network
 ADMIN_PASSWORD=secret npx @claude-limiter/server
