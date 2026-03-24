@@ -356,9 +356,15 @@ async function setup(flags) {
   }
   ok(`Claude Code found: ${claudePath}`);
 
+  // Run auth status as the actual user, not root.
+  // sudo sets SUDO_USER — use it to run claude as the real user.
   let authStatus;
   try {
-    authStatus = JSON.parse(execSync(`"${claudePath}" auth status`, { encoding: "utf-8" }).trim());
+    let authCmd = `"${claudePath}" auth status`;
+    if (process.env.SUDO_USER) {
+      authCmd = `su - ${process.env.SUDO_USER} -c '"${claudePath}" auth status'`;
+    }
+    authStatus = JSON.parse(execSync(authCmd, { encoding: "utf-8" }).trim());
   } catch {
     authStatus = null;
   }
