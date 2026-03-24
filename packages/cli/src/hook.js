@@ -135,19 +135,30 @@ function normalizeModel(raw) {
 }
 
 function detectModel(stdinData, config) {
-  // Source 1: Hook input (SessionStart only)
+  // Source 1: Hook input (SessionStart only — always accurate)
   if (stdinData && stdinData.model) {
     return normalizeModel(stdinData.model);
   }
 
   // Source 2: User settings (updated by /model command)
+  // KEY INSIGHT: /model writes "model" key for non-default models.
+  // Selecting the default model REMOVES the key.
+  // So: key exists → that's the model. Key absent → it's the plan default.
   const home = os.homedir();
   const userSettings = readJSON(path.join(home, ".claude", "settings.json"));
-  if (userSettings && userSettings.model) {
-    return normalizeModel(userSettings.model);
+  if (userSettings) {
+    if (userSettings.model) {
+      // User explicitly switched to this model
+      return normalizeModel(userSettings.model);
+    }
+    // settings.json exists but no model key = user chose the default.
+    // Use the plan default immediately — don't fall through to stale caches.
+    if (config && config.defaultModel) {
+      return normalizeModel(config.defaultModel);
+    }
   }
 
-  // Source 3: Local project settings
+  // Source 3: Project/local settings (may force a specific model)
   const localSettings = readJSON(
     path.join(process.cwd(), ".claude", "settings.local.json"),
   );
@@ -155,7 +166,6 @@ function detectModel(stdinData, config) {
     return normalizeModel(localSettings.model);
   }
 
-  // Source 4: Project settings
   const projectSettings = readJSON(
     path.join(process.cwd(), ".claude", "settings.json"),
   );
@@ -163,16 +173,15 @@ function detectModel(stdinData, config) {
     return normalizeModel(projectSettings.model);
   }
 
-  // Source 5: Cached from SessionStart
+  // Source 4: Cached from SessionStart (fallback if settings unreadable)
   const cached = readText(MODEL_FILE);
   if (cached) return normalizeModel(cached);
 
-  // Source 6-7: Environment variables
+  // Source 5: Environment variables
   if (process.env.ANTHROPIC_MODEL) return normalizeModel(process.env.ANTHROPIC_MODEL);
   if (process.env.CLAUDE_MODEL) return normalizeModel(process.env.CLAUDE_MODEL);
 
-  // Source 8: Plan default from config (detected during setup)
-  // Pro plan default = sonnet, Max plan default = opus
+  // Source 6: Plan default from config
   if (config && config.defaultModel) return normalizeModel(config.defaultModel);
 
   return "default";
