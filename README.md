@@ -17,6 +17,13 @@
 
 > **Early Beta** — This project is actively under development. Things may break, APIs may change. If you run into issues, please [open an issue](https://github.com/howincodes/claude-code-limiter/issues) — we're building this in the open and would love to fix it together.
 
+<p align="center">
+  <img src=".github/dashboard-demo.png" alt="Dashboard — real-time usage monitoring with live feed" width="700">
+</p>
+<p align="center">
+  <img src=".github/block-message.png" alt="What users see when rate limited" width="500">
+</p>
+
 ---
 
 ## :fire: The Problem
