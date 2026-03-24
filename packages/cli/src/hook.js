@@ -493,7 +493,11 @@ async function actionCheck(config) {
       allowed = false;
       reason = "Your Claude Code access has been revoked by the admin.\nContact your admin to restore access.";
       triggerLogout();
+    } else if (serverResp.status === "paused") {
+      allowed = false;
+      reason = "Your Claude Code access has been paused by the admin.\nContact your admin to resume access.";
     }
+    // If status is "active", allowed stays as the server said (based on limits)
   } else {
     // Offline: evaluate locally
     const cached = readJSON(CACHE_FILE);
@@ -536,15 +540,31 @@ async function actionCount(config) {
 
 /**
  * ENFORCE — PreToolUse hook.
- * Fast local-only kill/pause check. No server call.
+ * Local kill/pause check. If killed/paused, does a quick server check
+ * to see if the admin reinstated — prevents permanent lockout.
  */
-function actionEnforce() {
+async function actionEnforce() {
   const stdinData = readStdin();
   const cached = readJSON(CACHE_FILE);
   const status = (cached && cached.status) || "active";
 
   if (status === "killed" || status === "paused") {
-    const msg = status === "killed"
+    // Re-check with server — admin may have reinstated
+    const serverResp = await serverRequest("/api/v1/check", {
+      model: "default",
+      local_usage: {},
+    }, 2000);
+
+    if (serverResp && serverResp.status === "active") {
+      // Reinstated! Update local cache and allow
+      writeJSON(CACHE_FILE, serverResp);
+      debugLog(`ENFORCE reinstated — server says active`);
+      return; // no output = allow
+    }
+
+    // Still killed/paused
+    const currentStatus = (serverResp && serverResp.status) || status;
+    const msg = currentStatus === "killed"
       ? "Your Claude Code access has been revoked by the admin.\nContact your admin to restore access."
       : "Your Claude Code access has been paused by the admin.\nContact your admin to resume access.";
     process.stdout.write(JSON.stringify({
@@ -554,6 +574,7 @@ function actionEnforce() {
         permissionDecisionReason: msg,
       },
     }));
+    return;
   }
   // Active — no output = allow
 }
