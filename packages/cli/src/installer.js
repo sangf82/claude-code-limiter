@@ -105,6 +105,18 @@ function fetchJSON(url, options) {
 }
 
 // ════════════════════════════════════════════════════════════
+// SAFE I/O
+// ════════════════════════════════════════════════════════════
+
+function readJSON(filepath) {
+  try {
+    return JSON.parse(fs.readFileSync(filepath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 // PRIVILEGE CHECKS
 // ════════════════════════════════════════════════════════════
 
@@ -383,42 +395,94 @@ async function setup(flags) {
   const defaultModel = subscriptionType === "max" ? "opus" : "sonnet";
   info(`Plan default model: ${defaultModel}`);
 
-  // ── Get install code and server URL ──
-  let code = flags.code;
-  let serverUrl = flags.server;
+  // ── Check for existing installation ──
+  const existingServer = readJSON(PATHS.server);
+  const existingConfig = readJSON(PATHS.config);
+  let auth_token, user_name, limits, credit_weights, status;
+  let freshServerUrl = null;
 
-  if (!code) code = await ask("Install code:");
-  if (!serverUrl) serverUrl = await ask("Server URL:");
+  if (existingServer && existingServer.auth_token && existingConfig) {
+    // Already installed — offer to reinstall with existing credentials
+    log("");
+    warn(`Limiter already installed for "${existingConfig.user_name || "unknown"}".`);
+    info(`Server: ${existingServer.url}`);
 
-  if (!code || !serverUrl) {
-    fail("Install code and server URL are required.");
-    process.exit(1);
+    if (!flags.yes) {
+      const choice = await ask("Reinstall with existing config? (y/N):");
+      if (!choice.match(/^y(es)?$/i)) {
+        log("\n  Cancelled. Use --code to set up a different user.\n");
+        process.exit(0);
+      }
+    }
+
+    // Re-fetch latest config from server
+    log("");
+    info("Syncing with server...");
+    let serverUrl = flags.server || existingServer.url;
+    try {
+      const resp = await fetchJSON(`${serverUrl}/api/v1/status`, {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${existingServer.auth_token}` },
+      });
+      auth_token = existingServer.auth_token;
+      user_name = (resp.user && resp.user.name) || existingConfig.user_name;
+      limits = resp.limits || existingConfig.limits;
+      credit_weights = resp.credit_weights || existingConfig.credit_weights;
+      status = (resp.user && resp.user.status) || "active";
+      ok(`Synced as "${user_name}" (${status})`);
+    } catch {
+      // Server unreachable — use cached config
+      auth_token = existingServer.auth_token;
+      user_name = existingConfig.user_name;
+      limits = existingConfig.limits;
+      credit_weights = existingConfig.credit_weights;
+      status = existingConfig.status || "active";
+      warn("Server unreachable — reinstalling with cached config.");
+    }
+  } else {
+    // Fresh install — need code and server
+    let code = flags.code;
+    freshServerUrl = flags.server;
+
+    if (!code) code = await ask("Install code:");
+    if (!freshServerUrl) freshServerUrl = await ask("Server URL:");
+
+    if (!code || !freshServerUrl) {
+      fail("Install code and server URL are required.");
+      process.exit(1);
+    }
+
+    // Normalize server URL
+    freshServerUrl = freshServerUrl.replace(/\/+$/, "");
+
+    log("");
+    info("Registering with server...");
+
+    let registration;
+    try {
+      registration = await fetchJSON(`${freshServerUrl}/api/v1/register`, {
+        method: "POST",
+        body: { code },
+      });
+    } catch (err) {
+      fail(`Registration failed: ${err.message}`);
+      process.exit(1);
+    }
+
+    if (!registration || !registration.auth_token) {
+      fail("Invalid server response — missing auth_token.");
+      process.exit(1);
+    }
+
+    auth_token = registration.auth_token;
+    user_name = registration.user_name;
+    limits = registration.limits;
+    credit_weights = registration.credit_weights;
+    status = registration.status;
+    ok(`Registered as "${user_name}"`);
   }
 
-  // Normalize server URL
-  serverUrl = serverUrl.replace(/\/+$/, "");
-
-  log("");
-  info("Registering with server...");
-
-  let registration;
-  try {
-    registration = await fetchJSON(`${serverUrl}/api/v1/register`, {
-      method: "POST",
-      body: { code },
-    });
-  } catch (err) {
-    fail(`Registration failed: ${err.message}`);
-    process.exit(1);
-  }
-
-  if (!registration || !registration.auth_token) {
-    fail("Invalid server response — missing auth_token.");
-    process.exit(1);
-  }
-
-  const { auth_token, user_name, limits, credit_weights, status } = registration;
-  ok(`Registered as "${user_name}"`);
+  const serverUrl = freshServerUrl || flags.server || (existingServer && existingServer.url) || "";
 
   // Show limits
   info("Limits:");
