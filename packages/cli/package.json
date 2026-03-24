@@ -1,16 +1,32 @@
 {
   "name": "claude-code-limiter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Per-user rate limits for Claude Code — share one subscription fairly",
-  "bin": { "claude-code-limiter": "./bin/cli.js" },
-  "files": ["bin/", "src/", "LICENSE"],
-  "engines": { "node": ">=18.0.0" },
+  "bin": {
+    "claude-code-limiter": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "license": "MIT",
   "author": "howincodes",
   "contributors": [
     "farisbasha"
   ],
-  "keywords": ["claude", "claude-code", "rate-limiter", "hooks", "managed-settings", "usage-limits", "quota"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "rate-limiter",
+    "hooks",
+    "managed-settings",
+    "usage-limits",
+    "quota"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/howincodes/claude-code-limiter"

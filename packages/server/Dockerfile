@@ -11,8 +11,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+COPY package.json ./
+RUN npm install --omit=dev
 
 # --- Stage 2: Production image ---
 FROM node:20-slim
@@ -49,7 +49,7 @@ VOLUME ["/data"]
 
 # Healthcheck: verify the server responds
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:3000/api/v1/health || exit 1
 
 # Run as non-root
 USER limiter
