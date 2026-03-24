@@ -15,6 +15,8 @@
   <b>One subscription. Multiple users. Fair usage for everyone.</b>
 </p>
 
+> **Early Beta** — This project is actively under development. Things may break, APIs may change. If you run into issues, please [open an issue](https://github.com/howincodes/claude-code-limiter/issues) — we're building this in the open and would love to fix it together.
+
 ---
 
 ## :fire: The Problem
