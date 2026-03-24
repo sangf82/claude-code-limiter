@@ -1,6 +1,6 @@
 {
   "name": "@howincodes/claude-code-limiter",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "Per-user rate limits for Claude Code — share one subscription fairly",
   "bin": {
     "claude-code-limiter": "./bin/cli.js"

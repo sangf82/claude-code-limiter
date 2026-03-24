@@ -377,11 +377,225 @@
     return parts[1] + '/' + parts[2];
   }
 
+  /* ================================================================
+     peakHoursBar(canvas, data)
+     Renders a horizontal bar chart of prompt count by hour (0-23).
+     data: [{ hour: 14, count: 45 }, ...]
+     ================================================================ */
+  function peakHoursBar(canvas, data) {
+    if (!canvas || !data) return;
+
+    // Fill in all 24 hours
+    var hourMap = {};
+    for (var h = 0; h < 24; h++) hourMap[h] = 0;
+    for (var i = 0; i < data.length; i++) {
+      hourMap[data[i].hour] = data[i].count;
+    }
+
+    var barHeight = 16;
+    var barGap = 4;
+    var labelWidth = 40;
+    var valueWidth = 50;
+    var padding = { top: 8, right: 12, bottom: 8, left: 4 };
+    var totalH = padding.top + 24 * (barHeight + barGap) - barGap + padding.bottom;
+    var cssW = canvas.parentElement ? canvas.parentElement.clientWidth : 400;
+    if (cssW < 200) cssW = 400;
+    var cssH = totalH;
+
+    var ctx = setupCanvas(canvas, cssW, cssH);
+    var barAreaW = cssW - labelWidth - valueWidth - padding.left - padding.right;
+
+    var maxVal = 0;
+    for (var hh = 0; hh < 24; hh++) {
+      if (hourMap[hh] > maxVal) maxVal = hourMap[hh];
+    }
+    if (maxVal === 0) maxVal = 1;
+
+    for (var hr = 0; hr < 24; hr++) {
+      var y = padding.top + hr * (barHeight + barGap);
+      var barX = padding.left + labelWidth;
+      var count = hourMap[hr];
+
+      // Label
+      ctx.fillStyle = COLORS.textMuted;
+      ctx.font = '500 11px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      var label = String(hr).padStart(2, '0') + ':00';
+      ctx.fillText(label, barX - 8, y + barHeight / 2);
+
+      // Track
+      roundRect(ctx, barX, y, barAreaW, barHeight, 3);
+      ctx.fillStyle = COLORS.track;
+      ctx.fill();
+
+      // Fill
+      if (count > 0) {
+        var fillW = barAreaW * (count / maxVal);
+        roundRect(ctx, barX, y, fillW, barHeight, 3);
+        // Color based on intensity
+        var intensity = count / maxVal;
+        var barColor = intensity > 0.7 ? COLORS.orange : intensity > 0.4 ? COLORS.yellow : COLORS.blue;
+        ctx.fillStyle = barColor;
+        ctx.fill();
+      }
+
+      // Value
+      ctx.fillStyle = COLORS.textPrimary;
+      ctx.font = '600 11px "SF Mono", "Fira Code", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(count), barX + barAreaW + 8, y + barHeight / 2);
+    }
+  }
+
+  /* ================================================================
+     donutChart(canvas, data)
+     Renders a donut/pie chart.
+     data: { opus: 120, sonnet: 340, haiku: 50 }
+     ================================================================ */
+  function donutChart(canvas, data) {
+    if (!canvas || !data) return;
+
+    var size = 200;
+    var ctx = setupCanvas(canvas, size, size);
+    var cx = size / 2;
+    var cy = size / 2;
+    var outerR = 80;
+    var innerR = 50;
+
+    var total = 0;
+    var entries = [];
+    var chartColors = {
+      opus: COLORS.purple,
+      sonnet: COLORS.blue,
+      haiku: COLORS.green,
+      default: COLORS.orange,
+    };
+
+    for (var key in data) {
+      if (data[key] > 0) {
+        total += data[key];
+        entries.push({ label: key, value: data[key], color: chartColors[key] || COLORS.blue });
+      }
+    }
+
+    if (total === 0) {
+      // Draw empty state
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, 2 * Math.PI);
+      ctx.strokeStyle = COLORS.track;
+      ctx.lineWidth = outerR - innerR;
+      ctx.stroke();
+      ctx.fillStyle = COLORS.textMuted;
+      ctx.font = '500 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No data', cx, cy);
+      return;
+    }
+
+    var startAngle = -Math.PI / 2;
+    for (var i = 0; i < entries.length; i++) {
+      var sliceAngle = (entries[i].value / total) * 2 * Math.PI;
+      var endAngle = startAngle + sliceAngle;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, startAngle, endAngle);
+      ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
+      ctx.closePath();
+      ctx.fillStyle = entries[i].color;
+      ctx.fill();
+
+      startAngle = endAngle;
+    }
+
+    // Center text
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.font = '700 22px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(total), cx, cy - 4);
+    ctx.fillStyle = COLORS.textMuted;
+    ctx.font = '500 10px system-ui, sans-serif';
+    ctx.fillText('total', cx, cy + 12);
+
+    // Legend below
+    var legendY = size - 10;
+    var legendX = 10;
+    ctx.font = '500 10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    for (var j = 0; j < entries.length; j++) {
+      ctx.fillStyle = entries[j].color;
+      ctx.fillRect(legendX, legendY - 8, 8, 8);
+      ctx.fillStyle = COLORS.textMuted;
+      ctx.fillText(entries[j].label + ': ' + entries[j].value, legendX + 12, legendY);
+      legendX += ctx.measureText(entries[j].label + ': ' + entries[j].value).width + 24;
+    }
+  }
+
+  /* ================================================================
+     blockRateGauge(canvas, total, blocked)
+     Renders a gauge showing block rate percentage.
+     ================================================================ */
+  function blockRateGauge(canvas, total, blocked) {
+    if (!canvas) return;
+
+    var size = 160;
+    var ctx = setupCanvas(canvas, size, size);
+    var cx = size / 2;
+    var cy = size / 2 + 10;
+    var radius = 58;
+    var lineWidth = 12;
+
+    var rate = total > 0 ? blocked / total : 0;
+    if (rate > 1) rate = 1;
+
+    // Arc from -PI to 0 (half circle at top)
+    var startAngle = Math.PI;
+    var endAngle = startAngle + Math.PI * rate;
+
+    // Track
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, Math.PI, 2 * Math.PI);
+    ctx.strokeStyle = COLORS.track;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Fill
+    if (rate > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, startAngle, endAngle);
+      var color = rate > 0.2 ? COLORS.red : rate > 0.1 ? COLORS.yellow : COLORS.green;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    // Center text
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.font = '700 24px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText((rate * 100).toFixed(1) + '%', cx, cy - 10);
+
+    ctx.fillStyle = COLORS.textMuted;
+    ctx.font = '500 10px system-ui, sans-serif';
+    ctx.fillText('block rate', cx, cy + 8);
+    ctx.fillText(blocked + ' / ' + total + ' prompts', cx, cy + 22);
+  }
+
   /* ---- Public API ---- */
   window.Charts = {
     horizontalBar: horizontalBar,
     creditGauge: creditGauge,
     trendLine: trendLine,
+    peakHoursBar: peakHoursBar,
+    donutChart: donutChart,
+    blockRateGauge: blockRateGauge,
     COLORS: COLORS,
     MODEL_COLORS: MODEL_COLORS,
   };

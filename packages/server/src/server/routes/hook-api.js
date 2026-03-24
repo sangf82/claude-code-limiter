@@ -9,18 +9,53 @@ const { recordEvent, getUsageSummary, getCreditBalance } = require('../services/
 const { broadcast } = require('../ws');
 
 /**
+ * Extract client IP from request.
+ */
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.ip || req.connection.remoteAddress || null;
+}
+
+/**
  * POST /api/v1/sync
  * SessionStart: sync config, report model/machine, update last_seen.
- * Body: { auth_token, model, hostname?, platform? }
+ * Body: { auth_token, model, hostname?, platform?, arch?, os_version?, node_version?, claude_version?, session_id? }
  */
 router.post('/sync', hookAuth, (req, res) => {
   try {
     const user = req.user;
     const team = req.team;
     const creditWeights = JSON.parse(team.credit_weights);
+    const now = new Date().toISOString();
+    const clientIp = getClientIp(req);
 
     // Update last_seen
-    db.updateUser(user.id, { last_seen: new Date().toISOString() });
+    db.updateUser(user.id, { last_seen: now });
+
+    // Upsert device info
+    let device = null;
+    if (req.body.hostname) {
+      device = db.upsertDevice(user.id, {
+        hostname: req.body.hostname,
+        platform: req.body.platform,
+        arch: req.body.arch,
+        os_version: req.body.os_version,
+        node_version: req.body.node_version,
+        claude_version: req.body.claude_version,
+        ip: clientIp,
+      });
+    }
+
+    // Record session_start event
+    db.recordSessionEvent({
+      user_id: user.id,
+      device_id: device ? device.id : null,
+      type: 'session_start',
+      model: req.body.model || null,
+      session_id: req.body.session_id || null,
+      timestamp: now,
+    });
 
     // Get limits and usage
     const limits = db.getLimitRules(user.id);
@@ -47,7 +82,7 @@ router.post('/sync', hookAuth, (req, res) => {
       status: user.status,
       model: req.body.model,
       hostname: req.body.hostname,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     });
 
     res.json({
@@ -68,7 +103,7 @@ router.post('/sync', hookAuth, (req, res) => {
 /**
  * POST /api/v1/check
  * UserPromptSubmit: check if prompt is allowed, sync local usage.
- * Body: { auth_token, model, local_usage? }
+ * Body: { auth_token, model, local_usage?, prompt_length?, project_dir?, session_id? }
  */
 router.post('/check', hookAuth, (req, res) => {
   try {
@@ -76,12 +111,46 @@ router.post('/check', hookAuth, (req, res) => {
     const team = req.team;
     const model = req.body.model || 'default';
     const creditWeights = JSON.parse(team.credit_weights);
+    const now = new Date().toISOString();
+    const clientIp = getClientIp(req);
 
     // Update last_seen
-    db.updateUser(user.id, { last_seen: new Date().toISOString() });
+    db.updateUser(user.id, { last_seen: now });
+
+    // Update device last_seen and IP if we can identify it
+    const devices = db.getDevices(user.id);
+    if (devices.length > 0) {
+      const device = devices[0]; // most recently seen device
+      db.upsertDevice(user.id, { hostname: device.hostname, ip: clientIp });
+    }
+
+    // Record prompt event
+    db.recordSessionEvent({
+      user_id: user.id,
+      device_id: (devices.length > 0) ? devices[0].id : null,
+      type: 'prompt',
+      model,
+      prompt_length: req.body.prompt_length || null,
+      project_dir: req.body.project_dir || null,
+      session_id: req.body.session_id || null,
+      timestamp: now,
+    });
 
     // Evaluate limits
     const result = evaluateLimits(user, model, creditWeights);
+
+    // If blocked, also record a blocked event
+    if (!result.allowed) {
+      db.recordSessionEvent({
+        user_id: user.id,
+        device_id: (devices.length > 0) ? devices[0].id : null,
+        type: 'blocked',
+        model,
+        session_id: req.body.session_id || null,
+        blocked_reason: result.reason || null,
+        timestamp: now,
+      });
+    }
 
     // Get limits for response
     const limits = db.getLimitRules(user.id);
@@ -108,7 +177,8 @@ router.post('/check', hookAuth, (req, res) => {
         userName: user.name,
         model,
         reason: result.reason,
-        timestamp: new Date().toISOString(),
+        projectDir: req.body.project_dir || null,
+        timestamp: now,
       });
     } else {
       broadcast({
@@ -116,7 +186,8 @@ router.post('/check', hookAuth, (req, res) => {
         userId: user.id,
         userName: user.name,
         model,
-        timestamp: new Date().toISOString(),
+        projectDir: req.body.project_dir || null,
+        timestamp: now,
       });
     }
 
@@ -139,7 +210,7 @@ router.post('/check', hookAuth, (req, res) => {
 /**
  * POST /api/v1/count
  * Stop: record a completed turn.
- * Body: { auth_token, model, timestamp? }
+ * Body: { auth_token, model, timestamp?, session_id?, response_length? }
  */
 router.post('/count', hookAuth, (req, res) => {
   try {
@@ -148,12 +219,30 @@ router.post('/count', hookAuth, (req, res) => {
     const model = req.body.model || 'default';
     const timestamp = req.body.timestamp || new Date().toISOString();
     const creditWeights = JSON.parse(team.credit_weights);
+    const clientIp = getClientIp(req);
 
     // Calculate credit cost
     const creditCost = creditWeights[model] || creditWeights['default'] || 1;
 
-    // Record the event
+    // Record the usage event (existing behavior)
     recordEvent(user.id, model, creditCost, timestamp, 'hook');
+
+    // Update device last_seen and IP
+    const devices = db.getDevices(user.id);
+    if (devices.length > 0) {
+      db.upsertDevice(user.id, { hostname: devices[0].hostname, ip: clientIp });
+    }
+
+    // Record turn_complete session event
+    db.recordSessionEvent({
+      user_id: user.id,
+      device_id: (devices.length > 0) ? devices[0].id : null,
+      type: 'turn_complete',
+      model,
+      session_id: req.body.session_id || null,
+      response_length: req.body.response_length || null,
+      timestamp,
+    });
 
     // Recalculate credit balance
     const limits = db.getLimitRules(user.id);
@@ -171,6 +260,7 @@ router.post('/count', hookAuth, (req, res) => {
       userName: user.name,
       model,
       creditCost,
+      sessionId: req.body.session_id || null,
       timestamp,
     });
 

@@ -42,7 +42,8 @@ function setupWebSocket(server) {
 /**
  * Broadcast an event to all connected dashboard clients.
  * @param {object} event - Event object with at least a `type` field.
- *   Supported types: user_check, user_blocked, user_counted, user_killed, user_status_change
+ *   Supported types: user_check, user_blocked, user_counted, user_killed, user_status_change, user_status
+ *   Analytics-related fields: projectDir, sessionId (included when available)
  */
 function broadcast(event) {
   if (!wss) return;

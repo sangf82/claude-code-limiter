@@ -1039,6 +1039,27 @@ table td {
   display: block;
 }
 
+.chart-container-tall {
+  min-height: 520px;
+  overflow-y: auto;
+}
+
+/* Analytics page styles */
+.select-sm {
+  background: var(--card-bg, #161b22);
+  color: var(--text-primary, #e6edf3);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.select-sm:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
 /* ============================================================
    USER DETAIL PAGE
    ============================================================ */

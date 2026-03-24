@@ -56,7 +56,7 @@ router.use(adminAuth);
 
 /**
  * GET /api/admin/users
- * List all users with live usage.
+ * List all users with live usage and device info.
  */
 router.get('/users', (req, res) => {
   try {
@@ -67,6 +67,12 @@ router.get('/users', (req, res) => {
     const result = users.map(user => {
       const limits = db.getLimitRules(user.id);
       const usageSummary = getUsageSummary(user.id);
+      const devices = db.getDevices(user.id);
+
+      // Get last session time from session_event table
+      const lastSession = db.getDb().prepare(
+        'SELECT MAX(timestamp) AS last_session FROM session_event WHERE user_id = ? AND type = \'session_start\''
+      ).get(user.id);
 
       // Credit info
       const creditRule = limits.find(r => r.type === 'credits');
@@ -85,11 +91,22 @@ router.get('/users', (req, res) => {
         status: user.status,
         killed_at: user.killed_at,
         last_seen: user.last_seen,
+        last_session: lastSession ? lastSession.last_session : null,
         created_at: user.created_at,
         limits,
         usage: usageSummary,
         credit_balance: creditBalance,
         credit_budget: creditBudget,
+        devices: devices.map(d => ({
+          id: d.id,
+          hostname: d.hostname,
+          platform: d.platform,
+          arch: d.arch,
+          os_version: d.os_version,
+          claude_version: d.claude_version,
+          last_seen: d.last_seen,
+          last_ip: d.last_ip,
+        })),
       };
     });
 
@@ -342,6 +359,33 @@ router.get('/events', (req, res) => {
     res.json({ events });
   } catch (err) {
     console.error('GET /events error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/admin/analytics
+ * Analytics data for charts and reporting.
+ * Query: ?days=7&user_id=xxx
+ */
+router.get('/analytics', (req, res) => {
+  try {
+    const team = req.team;
+    const days = parseInt(req.query.days, 10) || 7;
+    const userId = req.query.user_id || null;
+
+    // If user_id provided, verify user belongs to this team
+    if (userId) {
+      const user = db.getUser(userId);
+      if (!user || user.team_id !== team.id) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+    }
+
+    const analytics = db.getAnalytics(team.id, { days, user_id: userId });
+    res.json(analytics);
+  } catch (err) {
+    console.error('GET /analytics error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

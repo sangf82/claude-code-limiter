@@ -81,12 +81,48 @@ function init(dbPath) {
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS device (
+      id              TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      hostname        TEXT,
+      platform        TEXT,
+      arch            TEXT,
+      os_version      TEXT,
+      node_version    TEXT,
+      claude_version  TEXT,
+      subscription_type TEXT,
+      default_model   TEXT,
+      first_seen      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_seen       DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_ip         TEXT,
+      UNIQUE(user_id, hostname)
+    );
+
+    CREATE TABLE IF NOT EXISTS session_event (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      device_id       TEXT REFERENCES device(id),
+      type            TEXT NOT NULL,
+      model           TEXT,
+      prompt_length   INTEGER,
+      project_dir     TEXT,
+      tools_used      INTEGER,
+      session_id      TEXT,
+      blocked_reason  TEXT,
+      response_length INTEGER,
+      timestamp       DATETIME NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_session_event_user_ts ON session_event(user_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_session_event_type ON session_event(user_id, type, timestamp);
+
     CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_event(user_id, timestamp);
     CREATE INDEX IF NOT EXISTS idx_usage_model_ts ON usage_event(user_id, model, timestamp);
     CREATE INDEX IF NOT EXISTS idx_user_auth_token ON user(auth_token);
     CREATE INDEX IF NOT EXISTS idx_user_team ON user(team_id);
     CREATE INDEX IF NOT EXISTS idx_limit_rule_user ON limit_rule(user_id);
     CREATE INDEX IF NOT EXISTS idx_install_code_user ON install_code(user_id);
+    CREATE INDEX IF NOT EXISTS idx_device_user ON device(user_id);
   `);
 
   console.log(`Database initialized at ${dbPath}`);
@@ -446,6 +482,255 @@ function useInstallCode(code) {
   return row;
 }
 
+// --------------- Device helpers ---------------
+
+/**
+ * Upsert a device record for a user.
+ * @param {string} userId
+ * @param {object} deviceInfo - { hostname, platform, arch, os_version, node_version, claude_version, subscription_type, default_model, ip }
+ * @returns {object} the device row
+ */
+function upsertDevice(userId, deviceInfo) {
+  const hostname = deviceInfo.hostname || 'unknown';
+  const existing = getDb().prepare(
+    'SELECT * FROM device WHERE user_id = ? AND hostname = ?'
+  ).get(userId, hostname);
+
+  if (existing) {
+    const sets = ['last_seen = ?'];
+    const values = [new Date().toISOString()];
+    if (deviceInfo.platform) { sets.push('platform = ?'); values.push(deviceInfo.platform); }
+    if (deviceInfo.arch) { sets.push('arch = ?'); values.push(deviceInfo.arch); }
+    if (deviceInfo.os_version) { sets.push('os_version = ?'); values.push(deviceInfo.os_version); }
+    if (deviceInfo.node_version) { sets.push('node_version = ?'); values.push(deviceInfo.node_version); }
+    if (deviceInfo.claude_version) { sets.push('claude_version = ?'); values.push(deviceInfo.claude_version); }
+    if (deviceInfo.subscription_type) { sets.push('subscription_type = ?'); values.push(deviceInfo.subscription_type); }
+    if (deviceInfo.default_model) { sets.push('default_model = ?'); values.push(deviceInfo.default_model); }
+    if (deviceInfo.ip) { sets.push('last_ip = ?'); values.push(deviceInfo.ip); }
+    values.push(existing.id);
+    getDb().prepare(`UPDATE device SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    return getDb().prepare('SELECT * FROM device WHERE id = ?').get(existing.id);
+  } else {
+    const id = uuidv4();
+    getDb().prepare(
+      `INSERT INTO device (id, user_id, hostname, platform, arch, os_version, node_version, claude_version, subscription_type, default_model, last_ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id, userId, hostname,
+      deviceInfo.platform || null,
+      deviceInfo.arch || null,
+      deviceInfo.os_version || null,
+      deviceInfo.node_version || null,
+      deviceInfo.claude_version || null,
+      deviceInfo.subscription_type || null,
+      deviceInfo.default_model || null,
+      deviceInfo.ip || null
+    );
+    return getDb().prepare('SELECT * FROM device WHERE id = ?').get(id);
+  }
+}
+
+/**
+ * Get all devices for a user.
+ * @param {string} userId
+ * @returns {Array}
+ */
+function getDevices(userId) {
+  return getDb().prepare('SELECT * FROM device WHERE user_id = ? ORDER BY last_seen DESC').all(userId);
+}
+
+/**
+ * Get all devices for a team.
+ * @param {string} teamId
+ * @returns {Array}
+ */
+function getDevicesByTeam(teamId) {
+  return getDb().prepare(
+    `SELECT d.*, u.name AS user_name, u.slug AS user_slug
+     FROM device d
+     JOIN user u ON d.user_id = u.id
+     WHERE u.team_id = ?
+     ORDER BY d.last_seen DESC`
+  ).all(teamId);
+}
+
+// --------------- Session Event helpers ---------------
+
+/**
+ * Record a session event.
+ * @param {object} data - { user_id, device_id, type, model, prompt_length, project_dir, tools_used, session_id, blocked_reason, response_length, timestamp }
+ */
+function recordSessionEvent(data) {
+  const ts = data.timestamp || new Date().toISOString();
+  return getDb().prepare(
+    `INSERT INTO session_event (user_id, device_id, type, model, prompt_length, project_dir, tools_used, session_id, blocked_reason, response_length, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    data.user_id,
+    data.device_id || null,
+    data.type,
+    data.model || null,
+    data.prompt_length != null ? data.prompt_length : null,
+    data.project_dir || null,
+    data.tools_used != null ? data.tools_used : null,
+    data.session_id || null,
+    data.blocked_reason || null,
+    data.response_length != null ? data.response_length : null,
+    ts
+  );
+}
+
+/**
+ * Get session events for a user with optional filters.
+ * @param {string} userId
+ * @param {object} [opts] - { since, type, limit }
+ * @returns {Array}
+ */
+function getSessionEvents(userId, opts) {
+  opts = opts || {};
+  const conditions = ['user_id = ?'];
+  const params = [userId];
+
+  if (opts.since) {
+    conditions.push('timestamp >= ?');
+    params.push(opts.since);
+  }
+  if (opts.type) {
+    conditions.push('type = ?');
+    params.push(opts.type);
+  }
+
+  const lim = opts.limit || 100;
+  params.push(lim);
+
+  return getDb().prepare(
+    `SELECT * FROM session_event WHERE ${conditions.join(' AND ')} ORDER BY timestamp DESC LIMIT ?`
+  ).all(...params);
+}
+
+/**
+ * Get analytics data for a team.
+ * @param {string} teamId
+ * @param {object} [opts] - { days, user_id }
+ * @returns {object} Analytics data
+ */
+function getAnalytics(teamId, opts) {
+  opts = opts || {};
+  const days = opts.days || 7;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const userFilter = opts.user_id ? ' AND se.user_id = ?' : '';
+  const userFilterParams = opts.user_id ? [opts.user_id] : [];
+
+  // Peak usage hours (group by hour of day, count events)
+  const peakHours = getDb().prepare(
+    `SELECT CAST(strftime('%H', se.timestamp) AS INTEGER) AS hour, COUNT(*) AS count
+     FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'prompt'${userFilter}
+     GROUP BY hour
+     ORDER BY hour`
+  ).all(teamId, since, ...userFilterParams);
+
+  // Per-project usage
+  const projectUsage = getDb().prepare(
+    `SELECT se.project_dir AS project, COUNT(*) AS count
+     FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'prompt' AND se.project_dir IS NOT NULL${userFilter}
+     GROUP BY se.project_dir
+     ORDER BY count DESC
+     LIMIT 20`
+  ).all(teamId, since, ...userFilterParams);
+
+  // Model distribution
+  const modelDistRows = getDb().prepare(
+    `SELECT se.model, COUNT(*) AS count
+     FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'prompt' AND se.model IS NOT NULL${userFilter}
+     GROUP BY se.model`
+  ).all(teamId, since, ...userFilterParams);
+  const modelDistribution = {};
+  for (const row of modelDistRows) {
+    modelDistribution[row.model] = row.count;
+  }
+
+  // Daily active users
+  const dailyActive = getDb().prepare(
+    `SELECT DATE(se.timestamp) AS date, COUNT(DISTINCT se.user_id) AS users
+     FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ?${userFilter}
+     GROUP BY DATE(se.timestamp)
+     ORDER BY date`
+  ).all(teamId, since, ...userFilterParams);
+
+  // Block rate
+  const totalPrompts = getDb().prepare(
+    `SELECT COUNT(*) AS count FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'prompt'${userFilter}`
+  ).get(teamId, since, ...userFilterParams);
+
+  const blockedCount = getDb().prepare(
+    `SELECT COUNT(*) AS count FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'blocked'${userFilter}`
+  ).get(teamId, since, ...userFilterParams);
+
+  const total = totalPrompts.count;
+  const blocked = blockedCount.count;
+  const blockRate = { total, blocked, rate: total > 0 ? +(blocked / total).toFixed(4) : 0 };
+
+  // Average prompt length
+  const avgPromptRow = getDb().prepare(
+    `SELECT AVG(se.prompt_length) AS avg_len FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'prompt' AND se.prompt_length IS NOT NULL${userFilter}`
+  ).get(teamId, since, ...userFilterParams);
+  const avgPromptLength = avgPromptRow.avg_len ? Math.round(avgPromptRow.avg_len) : 0;
+
+  // Average response length
+  const avgRespRow = getDb().prepare(
+    `SELECT AVG(se.response_length) AS avg_len FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'turn_complete' AND se.response_length IS NOT NULL${userFilter}`
+  ).get(teamId, since, ...userFilterParams);
+  const avgResponseLength = avgRespRow.avg_len ? Math.round(avgRespRow.avg_len) : 0;
+
+  // Average prompts per session
+  const sessionCounts = getDb().prepare(
+    `SELECT se.session_id, COUNT(*) AS count
+     FROM session_event se
+     JOIN user u ON se.user_id = u.id
+     WHERE u.team_id = ? AND se.timestamp >= ? AND se.type = 'prompt' AND se.session_id IS NOT NULL${userFilter}
+     GROUP BY se.session_id`
+  ).all(teamId, since, ...userFilterParams);
+  let avgPromptsPerSession = 0;
+  if (sessionCounts.length > 0) {
+    const totalSessionPrompts = sessionCounts.reduce((sum, r) => sum + r.count, 0);
+    avgPromptsPerSession = +(totalSessionPrompts / sessionCounts.length).toFixed(1);
+  }
+
+  // Devices
+  const devicesQuery = opts.user_id
+    ? getDb().prepare('SELECT * FROM device WHERE user_id = ? ORDER BY last_seen DESC').all(opts.user_id)
+    : getDevicesByTeam(teamId);
+
+  return {
+    peak_hours: peakHours,
+    model_distribution: modelDistribution,
+    project_usage: projectUsage,
+    daily_active: dailyActive,
+    block_rate: blockRate,
+    avg_prompt_length: avgPromptLength,
+    avg_response_length: avgResponseLength,
+    avg_prompts_per_session: avgPromptsPerSession,
+    devices: devicesQuery,
+  };
+}
+
 module.exports = {
   init,
   seed,
@@ -478,6 +763,14 @@ module.exports = {
   // Install Codes
   createInstallCode,
   useInstallCode,
+  // Device
+  upsertDevice,
+  getDevices,
+  getDevicesByTeam,
+  // Session Events / Analytics
+  recordSessionEvent,
+  getSessionEvents,
+  getAnalytics,
   // Helpers (exported for services)
   calculateWindowStart,
   getDatePartsInTZ,

@@ -22,6 +22,7 @@ const path = require("path");
 const os = require("os");
 const http = require("http");
 const https = require("https");
+const { execSync } = require("child_process");
 
 // ════════════════════════════════════════════════════════════
 // PATHS — System-protected locations per platform
@@ -45,6 +46,8 @@ const CACHE_FILE = path.join(LIMITER_DIR, "cache.json");
 const MODEL_FILE = path.join(LIMITER_DIR, "session-model.txt");
 const USAGE_DIR = path.join(LIMITER_DIR, "usage");
 const DEBUG_LOG = path.join(LIMITER_DIR, "debug.log");
+
+const DEVICE_CACHE_FILE = path.join(LIMITER_DIR, "device-cache.json");
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const USAGE_FILE = path.join(USAGE_DIR, `${TODAY}.json`);
@@ -173,6 +176,42 @@ function detectModel(stdinData, config) {
   if (config && config.defaultModel) return normalizeModel(config.defaultModel);
 
   return "default";
+}
+
+// ════════════════════════════════════════════════════════════
+// DEVICE INFO — Cached to avoid repeated system calls
+// ════════════════════════════════════════════════════════════
+
+let _deviceInfoCached = null;
+
+function getDeviceInfo(stdinData) {
+  if (_deviceInfoCached) return _deviceInfoCached;
+
+  // Try loading from disk cache (refreshed once per day)
+  const cached = readJSON(DEVICE_CACHE_FILE);
+  if (cached && cached._date === TODAY) {
+    _deviceInfoCached = cached;
+    return cached;
+  }
+
+  let claudeVersion = null;
+  try {
+    claudeVersion = execSync("claude --version 2>/dev/null", { timeout: 3000 }).toString().trim();
+  } catch {}
+
+  const info = {
+    hostname: os.hostname(),
+    platform: process.platform,
+    arch: process.arch,
+    os_version: os.release(),
+    node_version: process.version,
+    claude_version: claudeVersion || (stdinData && stdinData.claude_version) || null,
+    _date: TODAY,
+  };
+
+  _deviceInfoCached = info;
+  writeJSON(DEVICE_CACHE_FILE, info);
+  return info;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -395,10 +434,17 @@ async function actionSync(config) {
   writeText(MODEL_FILE, model);
   debugLog(`SYNC model=${model} source=${stdinData.source || "unknown"}`);
 
+  const deviceInfo = getDeviceInfo(stdinData);
+
   const serverResp = await serverRequest("/api/v1/sync", {
     model,
-    hostname: os.hostname(),
-    platform: process.platform,
+    hostname: deviceInfo.hostname,
+    platform: deviceInfo.platform,
+    arch: deviceInfo.arch,
+    os_version: deviceInfo.os_version,
+    node_version: deviceInfo.node_version,
+    claude_version: deviceInfo.claude_version,
+    session_id: stdinData.session_id || null,
   }, 8000);
 
   if (serverResp) {
@@ -426,6 +472,9 @@ async function actionCheck(config) {
   const serverResp = await serverRequest("/api/v1/check", {
     model,
     local_usage: usage,
+    prompt_length: (stdinData.prompt || "").length,
+    project_dir: path.basename(stdinData.cwd || ""),
+    session_id: stdinData.session_id || null,
   }, 3000);
 
   let allowed, reason;
@@ -480,6 +529,8 @@ async function actionCount(config) {
   serverRequest("/api/v1/count", {
     model,
     timestamp: new Date().toISOString(),
+    session_id: stdinData.session_id || null,
+    response_length: (stdinData.last_assistant_message || "").length,
   }, 3000);
 }
 

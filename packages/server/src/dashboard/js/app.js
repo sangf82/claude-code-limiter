@@ -102,6 +102,18 @@
     updateSettings: function (body) {
       return API._fetch('/api/admin/settings', { method: 'PUT', body: body });
     },
+
+    getAnalytics: function (params) {
+      var qs = '';
+      if (params) {
+        var parts = [];
+        for (var k in params) {
+          if (params[k] != null) parts.push(k + '=' + encodeURIComponent(params[k]));
+        }
+        qs = '?' + parts.join('&');
+      }
+      return API._fetch('/api/admin/analytics' + qs);
+    },
   };
 
   /* ================================================================
@@ -417,6 +429,9 @@
       case 'user':
         renderUserDetail(content, route.params.id);
         break;
+      case 'analytics':
+        renderAnalytics(content);
+        break;
       case 'settings':
         renderSettings(content);
         break;
@@ -646,11 +661,12 @@
      PAGE: USER DETAIL
      ================================================================ */
   function renderUserDetail(container, userId) {
-    Promise.all([API.getUser(userId), API.getUsage({ user_id: userId, days: 30 }), API.getEvents({ user_id: userId, limit: 20 })])
+    Promise.all([API.getUser(userId), API.getUsage({ user_id: userId, days: 30 }), API.getEvents({ user_id: userId, limit: 20 }), API.getAnalytics({ user_id: userId, days: 30 })])
       .then(function (results) {
         var user = results[0];
         var usageData = results[1];
         var eventsData = results[2];
+        var userAnalytics = results[3] || {};
         var limits = user.limits || [];
         var usage = user.usage || {};
         var dailyUsage = (usage.daily && usage.daily.counts) ? usage.daily.counts : {};
@@ -743,6 +759,48 @@
         }
         html += '</tbody></table></div></div></div>';
 
+        // Devices for this user
+        var userDevices = user.devices || [];
+        if (userDevices.length > 0) {
+          html += '<div class="card mb-2"><div class="card-header"><h3>Devices</h3></div>';
+          html += '<div class="card-body-flush"><div class="table-wrap"><table>';
+          html += '<thead><tr><th>Hostname</th><th>Platform</th><th>Claude Version</th><th>Last Seen</th><th>IP</th></tr></thead><tbody>';
+          for (var dvi = 0; dvi < userDevices.length; dvi++) {
+            var dv = userDevices[dvi];
+            html += '<tr>';
+            html += '<td>' + escapeHtml(dv.hostname || 'unknown') + '</td>';
+            html += '<td>' + escapeHtml((dv.platform || '') + (dv.arch ? ' (' + dv.arch + ')' : '')) + '</td>';
+            html += '<td class="text-sm">' + escapeHtml(dv.claude_version || '') + '</td>';
+            html += '<td class="text-sm">' + timeAgo(dv.last_seen) + '</td>';
+            html += '<td class="text-mono text-sm">' + escapeHtml(dv.last_ip || '') + '</td>';
+            html += '</tr>';
+          }
+          html += '</tbody></table></div></div></div>';
+        }
+
+        // Top Projects for this user
+        var userProjects = userAnalytics.project_usage || [];
+        if (userProjects.length > 0) {
+          html += '<div class="card mb-2"><div class="card-header"><h3>Top Projects (30d)</h3></div>';
+          html += '<div class="card-body-flush"><div class="table-wrap"><table>';
+          html += '<thead><tr><th>Project</th><th>Prompts</th></tr></thead><tbody>';
+          for (var upi = 0; upi < userProjects.length; upi++) {
+            html += '<tr>';
+            html += '<td>' + escapeHtml(userProjects[upi].project) + '</td>';
+            html += '<td class="text-mono">' + userProjects[upi].count + '</td>';
+            html += '</tr>';
+          }
+          html += '</tbody></table></div></div></div>';
+        }
+
+        // Peak Hours for this user
+        var userPeakHours = userAnalytics.peak_hours || [];
+        if (userPeakHours.length > 0) {
+          html += '<div class="card mb-2"><div class="card-header"><h3>Peak Usage Hours (30d)</h3></div>';
+          html += '<div class="card-body"><div class="chart-container chart-container-tall"><canvas id="user-peak-hours"></canvas></div></div>';
+          html += '</div>';
+        }
+
         html += '</div>'; // right column
         html += '</div>'; // detail-grid
 
@@ -790,6 +848,12 @@
               trendPts.push({ day: key, value: dayMap[key] || 0 });
             }
             Charts.trendLine(trendCanvas, trendPts);
+          }
+
+          // User peak hours chart
+          var userPeakCanvas = document.getElementById('user-peak-hours');
+          if (userPeakCanvas && userAnalytics.peak_hours) {
+            Charts.peakHoursBar(userPeakCanvas, userAnalytics.peak_hours);
           }
         });
 
@@ -899,6 +963,166 @@
     html += '</div></div>';
 
     container.innerHTML = html;
+  }
+
+  /* ================================================================
+     PAGE: ANALYTICS
+     ================================================================ */
+  var _analyticsDays = 30;
+
+  function renderAnalytics(container) {
+    container.innerHTML = '<div class="spinner"></div>';
+
+    API.getAnalytics({ days: _analyticsDays }).then(function (data) {
+      var html = '';
+      html += '<div class="page-header">';
+      html += '  <h2>Analytics</h2>';
+      html += '  <div class="page-header-actions">';
+      html += '    <select id="analytics-days" class="select-sm">';
+      html += '      <option value="7"' + (_analyticsDays === 7 ? ' selected' : '') + '>Last 7 days</option>';
+      html += '      <option value="14"' + (_analyticsDays === 14 ? ' selected' : '') + '>Last 14 days</option>';
+      html += '      <option value="30"' + (_analyticsDays === 30 ? ' selected' : '') + '>Last 30 days</option>';
+      html += '      <option value="90"' + (_analyticsDays === 90 ? ' selected' : '') + '>Last 90 days</option>';
+      html += '    </select>';
+      html += '  </div>';
+      html += '</div>';
+
+      // Stats row
+      html += '<div class="stats-row">';
+      html += statCard('Avg Prompt Length', data.avg_prompt_length || 0, 'chars');
+      html += statCard('Avg Response Length', data.avg_response_length || 0, 'chars');
+      html += statCard('Avg Prompts/Session', data.avg_prompts_per_session || 0, '');
+      html += statCard('Block Rate', data.block_rate ? (data.block_rate.rate * 100).toFixed(1) + '%' : '0%', data.block_rate ? data.block_rate.blocked + '/' + data.block_rate.total + ' blocked' : '');
+      html += '</div>';
+
+      // Two column layout: charts
+      html += '<div class="two-col">';
+
+      // Left column
+      html += '<div>';
+
+      // Model Distribution
+      html += '<div class="card mb-2"><div class="card-header"><h3>Model Distribution</h3></div>';
+      html += '<div class="card-body" style="display:flex;justify-content:center"><canvas id="model-donut"></canvas></div>';
+      html += '</div>';
+
+      // Block Rate Gauge
+      html += '<div class="card mb-2"><div class="card-header"><h3>Block Rate</h3></div>';
+      html += '<div class="card-body" style="display:flex;justify-content:center"><canvas id="block-gauge"></canvas></div>';
+      html += '</div>';
+
+      // Top Projects
+      html += '<div class="card mb-2"><div class="card-header"><h3>Top Projects</h3></div>';
+      html += '<div class="card-body-flush"><div class="table-wrap"><table>';
+      html += '<thead><tr><th>Project</th><th>Prompts</th></tr></thead><tbody>';
+      var projects = data.project_usage || [];
+      if (projects.length === 0) {
+        html += '<tr><td colspan="2" class="text-center text-muted">No project data yet</td></tr>';
+      } else {
+        for (var pi = 0; pi < projects.length; pi++) {
+          html += '<tr>';
+          html += '<td>' + escapeHtml(projects[pi].project) + '</td>';
+          html += '<td class="text-mono">' + projects[pi].count + '</td>';
+          html += '</tr>';
+        }
+      }
+      html += '</tbody></table></div></div></div>';
+
+      html += '</div>'; // left column
+
+      // Right column
+      html += '<div>';
+
+      // Daily Active Users
+      html += '<div class="card mb-2"><div class="card-header"><h3>Daily Active Users</h3></div>';
+      html += '<div class="card-body"><div class="chart-container"><canvas id="dau-chart"></canvas></div></div>';
+      html += '</div>';
+
+      // Peak Hours
+      html += '<div class="card mb-2"><div class="card-header"><h3>Peak Usage Hours</h3></div>';
+      html += '<div class="card-body"><div class="chart-container chart-container-tall"><canvas id="peak-hours-chart"></canvas></div></div>';
+      html += '</div>';
+
+      html += '</div>'; // right column
+      html += '</div>'; // two-col
+
+      // Devices table
+      html += '<div class="card mb-2"><div class="card-header"><h3>Devices</h3></div>';
+      html += '<div class="card-body-flush"><div class="table-wrap"><table>';
+      html += '<thead><tr><th>Hostname</th><th>User</th><th>Platform</th><th>OS Version</th><th>Claude Version</th><th>Last Seen</th><th>IP</th></tr></thead><tbody>';
+      var devices = data.devices || [];
+      if (devices.length === 0) {
+        html += '<tr><td colspan="7" class="text-center text-muted">No devices registered yet</td></tr>';
+      } else {
+        for (var di = 0; di < devices.length; di++) {
+          var dev = devices[di];
+          html += '<tr>';
+          html += '<td>' + escapeHtml(dev.hostname || 'unknown') + '</td>';
+          html += '<td>' + escapeHtml(dev.user_name || dev.user_slug || '') + '</td>';
+          html += '<td>' + escapeHtml((dev.platform || '') + (dev.arch ? ' (' + dev.arch + ')' : '')) + '</td>';
+          html += '<td class="text-sm">' + escapeHtml(dev.os_version || '') + '</td>';
+          html += '<td class="text-sm">' + escapeHtml(dev.claude_version || '') + '</td>';
+          html += '<td class="text-sm">' + timeAgo(dev.last_seen) + '</td>';
+          html += '<td class="text-mono text-sm">' + escapeHtml(dev.last_ip || '') + '</td>';
+          html += '</tr>';
+        }
+      }
+      html += '</tbody></table></div></div></div>';
+
+      container.innerHTML = html;
+
+      // Render charts after DOM is ready
+      requestAnimationFrame(function () {
+        // Model distribution donut
+        var donutCanvas = document.getElementById('model-donut');
+        if (donutCanvas && data.model_distribution) {
+          Charts.donutChart(donutCanvas, data.model_distribution);
+        }
+
+        // Block rate gauge
+        var gaugeCanvas = document.getElementById('block-gauge');
+        if (gaugeCanvas && data.block_rate) {
+          Charts.blockRateGauge(gaugeCanvas, data.block_rate.total, data.block_rate.blocked);
+        }
+
+        // Daily active users trend
+        var dauCanvas = document.getElementById('dau-chart');
+        if (dauCanvas && data.daily_active) {
+          var dauPts = [];
+          // Fill in missing days
+          var dayMap = {};
+          for (var di2 = 0; di2 < data.daily_active.length; di2++) {
+            dayMap[data.daily_active[di2].date] = data.daily_active[di2].users;
+          }
+          var today = new Date();
+          for (var td = 29; td >= 0; td--) {
+            var d = new Date(today);
+            d.setDate(d.getDate() - td);
+            var key = d.toISOString().split('T')[0];
+            dauPts.push({ day: key, value: dayMap[key] || 0 });
+          }
+          Charts.trendLine(dauCanvas, dauPts);
+        }
+
+        // Peak hours
+        var peakCanvas = document.getElementById('peak-hours-chart');
+        if (peakCanvas && data.peak_hours) {
+          Charts.peakHoursBar(peakCanvas, data.peak_hours);
+        }
+      });
+
+      // Handle days selector change
+      var daysSelect = document.getElementById('analytics-days');
+      if (daysSelect) {
+        daysSelect.addEventListener('change', function () {
+          _analyticsDays = parseInt(daysSelect.value, 10) || 30;
+          renderAnalytics(container);
+        });
+      }
+
+    }).catch(function (err) {
+      container.innerHTML = '<div class="empty-state"><p>Failed to load analytics: ' + escapeHtml(err.message) + '</p></div>';
+    });
   }
 
   /* ================================================================
