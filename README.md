@@ -65,9 +65,17 @@ Hooks check local cache first (zero latency), sync with the server in the backgr
 
 ## :rocket: Quick Start
 
-### 1. Start the server (you, the admin)
+### 1. Deploy the server
 
-**Option A: Docker (recommended)**
+The server must be reachable from every user's machine. Deploy it anywhere with a public URL.
+
+**Option A: One-click cloud deploy (easiest)**
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/YOUR_TEMPLATE_ID)
+
+Or use [Render](https://render.com), [Fly.io](https://fly.io), or any cloud provider. Set `ADMIN_PASSWORD` as an environment variable.
+
+**Option B: Docker on a VPS**
 ```bash
 docker run -d \
   --name claude-limiter \
@@ -77,14 +85,25 @@ docker run -d \
   ghcr.io/howincodes/claude-code-limiter:latest
 ```
 
-**Option B: npm**
+**Option C: Docker Compose with auto-HTTPS**
 ```bash
-npx claude-code-limiter serve
+cd packages/server
+DOMAIN=limiter.yourdomain.com ADMIN_PASSWORD=secret docker compose up -d
 ```
+Caddy handles SSL certificates automatically.
+
+**Option D: Office/home network**
+```bash
+# Run on any machine on your network
+ADMIN_PASSWORD=secret npx @claude-limiter/server
+# Server is at http://192.168.x.x:3000 — reachable by all machines on the same network
+```
+
+> **Important:** Every user's machine needs to reach the server URL. `localhost` only works on your own machine. Use a public URL, VPS IP, or local network IP.
 
 ### 2. Add users in the dashboard
 
-Open **http://localhost:3000/dashboard** and log in with your admin password.
+Open your server URL (e.g. `https://limiter.yourdomain.com/dashboard`) and log in with your admin password.
 
 Click **Add User** → set their name, limits, and credit budget → copy the install code.
 
@@ -93,7 +112,7 @@ Click **Add User** → set their name, limits, and credit budget → copy the in
 ```bash
 sudo npx claude-code-limiter setup \
   --code CLM-alice-a8f3e2 \
-  --server https://your-server:3000
+  --server https://limiter.yourdomain.com
 ```
 
 Restart Claude Code. That's it. The user is now rate-limited.
