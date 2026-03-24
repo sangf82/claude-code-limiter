@@ -1,5 +1,5 @@
 {
-  "name": "claude-code-limiter-server",
+  "name": "@howincodes/claude-code-limiter-server",
   "version": "1.0.0",
   "description": "Dashboard server for claude-code-limiter",
   "main": "src/server/index.js",

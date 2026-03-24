@@ -38,19 +38,19 @@ ${c.bold('OPTIONS')}
 
 ${c.bold('EXAMPLES')}
   ${c.dim('# Install on a user\'s machine (admin gives them the code)')}
-  sudo npx claude-code-limiter setup --code CLM-alice-a8f3e2 --server https://your-server:3000
+  sudo npx @howincodes/claude-code-limiter setup --code CLM-alice-a8f3e2 --server https://your-server:3000
 
   ${c.dim('# Check current usage')}
-  npx claude-code-limiter status
+  npx @howincodes/claude-code-limiter status
 
   ${c.dim('# Force re-sync config from server')}
-  sudo npx claude-code-limiter sync
+  sudo npx @howincodes/claude-code-limiter sync
 
   ${c.dim('# Remove the limiter from this machine')}
-  sudo npx claude-code-limiter uninstall
+  sudo npx @howincodes/claude-code-limiter uninstall
 
   ${c.dim('# Start the server')}
-  npx claude-code-limiter serve --port 3000
+  npx @howincodes/claude-code-limiter serve --port 3000
 
   ${c.dim('# Start the server via Docker')}
   docker run -p 3000:3000 -v data:/data -e ADMIN_PASSWORD=xxx claude-code-limiter
@@ -118,11 +118,11 @@ async function main() {
     case 'setup': {
       if (!code) {
         die('--code is required for setup.\n'
-          + c.dim('Usage: sudo npx claude-code-limiter setup --code <CODE> --server <URL>'));
+          + c.dim('Usage: sudo npx @howincodes/claude-code-limiter setup --code <CODE> --server <URL>'));
       }
       if (!server) {
         die('--server is required for setup.\n'
-          + c.dim('Usage: sudo npx claude-code-limiter setup --code <CODE> --server <URL>'));
+          + c.dim('Usage: sudo npx @howincodes/claude-code-limiter setup --code <CODE> --server <URL>'));
       }
       const installer = require('../src/installer.js');
       await installer.setup({ code, server, skipConfirm });

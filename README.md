@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/claude-code-limiter"><img src="https://img.shields.io/npm/v/claude-code-limiter?color=blue&label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@howincodes/claude-code-limiter"><img src="https://img.shields.io/npm/v/@howincodes/claude-code-limiter?color=blue&label=npm" alt="npm version"></a>
   <a href="https://github.com/howincodes/claude-code-limiter/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
   <a href="https://ghcr.io/howincodes/claude-code-limiter"><img src="https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker" alt="Docker"></a>
 </p>
@@ -88,7 +88,7 @@ Caddy handles SSL certificates automatically.
 **Option C: Office/home network**
 ```bash
 # Run on any machine on your network
-ADMIN_PASSWORD=secret npx @claude-limiter/server
+ADMIN_PASSWORD=secret npx @howincodes/claude-code-limiter-server
 # Server is at http://192.168.x.x:3000 — reachable by all machines on the same network
 ```
 
@@ -103,7 +103,7 @@ Click **Add User** → set their name, limits, and credit budget → copy the in
 ### 3. Install on each user's machine
 
 ```bash
-sudo npx claude-code-limiter setup \
+sudo npx @howincodes/claude-code-limiter setup \
   --code CLM-alice-a8f3e2 \
   --server https://limiter.yourdomain.com
 ```
@@ -397,7 +397,7 @@ All rules are checked on every prompt. First "deny" wins:
 ### Setup (run on each user's machine)
 
 ```bash
-sudo npx claude-code-limiter setup --code <INSTALL_CODE> --server <SERVER_URL>
+sudo npx @howincodes/claude-code-limiter setup --code <INSTALL_CODE> --server <SERVER_URL>
 ```
 
 Installs the hook, managed settings, watchdog daemon, and registers with the server. Requires `sudo` because files are written to system-protected directories.
@@ -405,7 +405,7 @@ Installs the hook, managed settings, watchdog daemon, and registers with the ser
 ### Check Status
 
 ```bash
-npx claude-code-limiter status
+npx @howincodes/claude-code-limiter status
 ```
 
 ```
@@ -432,7 +432,7 @@ npx claude-code-limiter status
 ### Force Sync
 
 ```bash
-sudo npx claude-code-limiter sync
+sudo npx @howincodes/claude-code-limiter sync
 ```
 
 Pulls the latest config and limits from the server immediately.
@@ -440,7 +440,7 @@ Pulls the latest config and limits from the server immediately.
 ### Uninstall
 
 ```bash
-sudo npx claude-code-limiter uninstall
+sudo npx @howincodes/claude-code-limiter uninstall
 ```
 
 Removes the hook, managed settings, watchdog daemon, and all local data. Requires `sudo`.
@@ -485,8 +485,8 @@ Absolutely. It works for any group sharing a single Claude Code subscription —
 claude-code-limiter/
 ├── package.json
 ├── bin/
-│   ├── cli.js                  ← npx claude-code-limiter (client CLI)
-│   └── server.js               ← npx claude-code-limiter serve
+│   ├── cli.js                  ← npx @howincodes/claude-code-limiter (client CLI)
+│   └── server.js               ← npx @howincodes/claude-code-limiter serve
 ├── src/
 │   ├── hook.js                 ← standalone hook (zero npm deps)
 │   ├── installer.js            ← setup, uninstall, sync
