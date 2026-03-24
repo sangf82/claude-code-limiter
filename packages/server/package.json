@@ -1,0 +1,27 @@
+{
+  "name": "@claude-limiter/server",
+  "version": "1.0.0",
+  "description": "Dashboard server for claude-code-limiter",
+  "main": "src/server/index.js",
+  "bin": { "claude-limiter-server": "./bin/server.js" },
+  "scripts": { "start": "node bin/server.js" },
+  "files": ["bin/", "src/", "Dockerfile", "docker-compose.yml", "Caddyfile", "LICENSE"],
+  "engines": { "node": ">=18.0.0" },
+  "author": "howincodes",
+  "contributors": [
+    "farisbasha"
+  ],
+  "dependencies": {
+    "express": "^4.21.0",
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.18.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^10.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/howincodes/claude-code-limiter"
+  },
+  "license": "MIT"
+}

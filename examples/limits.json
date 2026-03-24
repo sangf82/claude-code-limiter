@@ -1,0 +1,13 @@
+{
+  "credit_weights": {
+    "opus": 10,
+    "sonnet": 3,
+    "haiku": 1
+  },
+  "limits": [
+    { "type": "credits", "window": "daily", "value": 100 },
+    { "type": "per_model", "model": "opus", "window": "sliding_24h", "value": 5 },
+    { "type": "per_model", "model": "opus", "window": "monthly", "value": 50 },
+    { "type": "time_of_day", "model": "opus", "schedule_start": "09:00", "schedule_end": "18:00", "schedule_tz": "America/New_York" }
+  ]
+}

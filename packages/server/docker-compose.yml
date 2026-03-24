@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  limiter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-limiter
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/data
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - JWT_SECRET=${JWT_SECRET:-}
+    volumes:
+      - limiter-data:/data
+    networks:
+      - limiter-net
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    container_name: claude-limiter-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - limiter-net
+    depends_on:
+      - limiter
+
+volumes:
+  limiter-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  limiter-net:
+    driver: bridge

@@ -1,0 +1,12 @@
+# Caddyfile for claude-code-limiter
+# Set the DOMAIN env var for auto-HTTPS, or leave unset for localhost.
+#
+# With a real domain (auto-HTTPS):
+#   DOMAIN=limiter.example.com docker compose up
+#
+# LAN-only (no HTTPS):
+#   docker compose up   (defaults to localhost)
+
+{$DOMAIN:localhost} {
+	reverse_proxy limiter:3000
+}

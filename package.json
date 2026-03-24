@@ -1,0 +1,9 @@
+{
+  "name": "claude-code-limiter-monorepo",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "serve": "npm run start --workspace=packages/server",
+    "test": "echo 'TODO'"
+  }
+}
