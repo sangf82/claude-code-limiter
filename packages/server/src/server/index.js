@@ -29,8 +29,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Static files: serve dashboard ---
-const dashboardDir = path.join(__dirname, '..', 'dashboard');
+// --- Static files: serve dashboard (React SPA built with Vite) ---
+const dashboardDir = path.join(__dirname, '..', '..', '..', 'dashboard', 'dist');
 app.use('/dashboard', express.static(dashboardDir));
 app.get('/dashboard/*', (req, res) => res.sendFile(path.join(dashboardDir, 'index.html')));
 
