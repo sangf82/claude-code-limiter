@@ -116,7 +116,7 @@ function readStdin() {
 //   5. session-model.txt (cached from SessionStart)
 //   6. ANTHROPIC_MODEL env var
 //   7. CLAUDE_MODEL env var
-//   8. Falls back to "opus" (default when no model key present)
+//   8. Falls back to "default" (plan default varies: Pro=sonnet, Max=opus)
 //
 // Normalization: string containing "opus"/"sonnet"/"haiku"
 // maps to that family. Everything else → "default".
@@ -159,7 +159,12 @@ function detectModel(stdinData) {
     return normalizeModel(projectSettings.model);
   }
 
-  // Source 5: Cached from SessionStart
+  // Source 5: Cached from SessionStart (always has the real model)
+  // This is critical: the default model depends on the plan.
+  // Pro plan default = sonnet (no model key in settings.json)
+  // Max plan default = opus (no model key in settings.json)
+  // SessionStart stdin always includes the actual model, so the cached
+  // value from session-model.txt is the ground truth.
   const cached = readText(MODEL_FILE);
   if (cached) return normalizeModel(cached);
 
@@ -167,8 +172,10 @@ function detectModel(stdinData) {
   if (process.env.ANTHROPIC_MODEL) return normalizeModel(process.env.ANTHROPIC_MODEL);
   if (process.env.CLAUDE_MODEL) return normalizeModel(process.env.CLAUDE_MODEL);
 
-  // Default: opus (Claude Code's default model — absence of model key = opus)
-  return "opus";
+  // No model detected anywhere — use "default" which maps to the
+  // fallback limit in config. Never hardcode opus/sonnet here because
+  // the plan's default model varies.
+  return "default";
 }
 
 // ════════════════════════════════════════════════════════════

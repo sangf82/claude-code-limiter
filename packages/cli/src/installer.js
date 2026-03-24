@@ -123,7 +123,7 @@ function requireElevated(action) {
   if (IS_WIN) {
     info("Right-click PowerShell → 'Run as administrator', then retry.");
   } else {
-    info(`Run with sudo:  sudo npx claude-code-limiter ${action}`);
+    info(`Run with sudo:  sudo npx @howincodes/claude-code-limiter ${action}`);
   }
   log("");
   process.exit(1);
@@ -491,7 +491,7 @@ function status() {
     log("");
     warn("Limiter not installed on this machine.");
     log(C.dim(`  Expected hook at: ${PATHS.hook}`));
-    log(C.dim("  Run: sudo npx claude-code-limiter setup"));
+    log(C.dim("  Run: sudo npx @howincodes/claude-code-limiter setup"));
     log("");
     return;
   }

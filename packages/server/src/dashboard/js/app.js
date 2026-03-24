@@ -1038,7 +1038,7 @@
         // Show install command modal
         var installCode = result.install_code;
         var serverUrl = location.protocol + '//' + location.host;
-        var installCmd = 'sudo npx claude-code-limiter setup --code ' + installCode + ' --server ' + serverUrl;
+        var installCmd = 'sudo npx @howincodes/claude-code-limiter setup --code ' + installCode + ' --server ' + serverUrl;
 
         var installHtml = '';
         installHtml += '<div class="modal-header"><h3>Install Command</h3><button class="modal-close" data-action="close-modal">&times;</button></div>';
