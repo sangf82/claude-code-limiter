@@ -311,15 +311,46 @@ async function setup(flags) {
   log("");
 
   // ── Pre-flight: Check Claude Code is installed and authenticated ──
+  // sudo resets PATH, so "which claude" fails even if claude is installed.
+  // Check common install locations + the invoking user's home directory.
   let claudePath;
+  const homeDir = process.env.SUDO_USER
+    ? path.join(IS_WIN ? process.env.USERPROFILE || "" : `/home/${process.env.SUDO_USER}`)
+    : os.homedir();
+  const candidatePaths = [
+    // Standard locations
+    ...(IS_WIN ? [] : [
+      path.join(homeDir, ".local", "bin", "claude"),
+      "/usr/local/bin/claude",
+      "/usr/bin/claude",
+      path.join(os.homedir(), ".local", "bin", "claude"),
+    ]),
+    ...(IS_WIN ? [
+      path.join(process.env.LOCALAPPDATA || "", "Programs", "claude", "claude.exe"),
+      path.join(process.env.PROGRAMFILES || "", "Claude", "claude.exe"),
+    ] : []),
+  ];
+
+  // Try which/where first (works if PATH is correct)
   try {
     claudePath = execSync("which claude 2>/dev/null || where claude 2>nul", { encoding: "utf-8" }).trim();
   } catch {}
+
+  // Fall back to known paths
+  if (!claudePath) {
+    for (const p of candidatePaths) {
+      if (p && fs.existsSync(p)) { claudePath = p; break; }
+    }
+  }
 
   if (!claudePath) {
     fail("Claude Code is not installed on this machine.");
     log("");
     info("Install it first: https://code.claude.com");
+    if (process.env.SUDO_USER) {
+      info(`Looked in: ${path.join(homeDir, ".local", "bin", "claude")}`);
+      info("If Claude is installed elsewhere, add it to PATH and retry.");
+    }
     log("");
     process.exit(1);
   }
@@ -327,7 +358,7 @@ async function setup(flags) {
 
   let authStatus;
   try {
-    authStatus = JSON.parse(execSync("claude auth status", { encoding: "utf-8" }).trim());
+    authStatus = JSON.parse(execSync(`"${claudePath}" auth status`, { encoding: "utf-8" }).trim());
   } catch {
     authStatus = null;
   }
