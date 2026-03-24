@@ -116,7 +116,8 @@ function readStdin() {
 //   5. session-model.txt (cached from SessionStart)
 //   6. ANTHROPIC_MODEL env var
 //   7. CLAUDE_MODEL env var
-//   8. Falls back to "default" (plan default varies: Pro=sonnet, Max=opus)
+//   8. config.defaultModel (detected during setup: Pro=sonnet, Max=opus)
+//   9. Falls back to "default"
 //
 // Normalization: string containing "opus"/"sonnet"/"haiku"
 // maps to that family. Everything else → "default".
@@ -130,7 +131,7 @@ function normalizeModel(raw) {
   return "default";
 }
 
-function detectModel(stdinData) {
+function detectModel(stdinData, config) {
   // Source 1: Hook input (SessionStart only)
   if (stdinData && stdinData.model) {
     return normalizeModel(stdinData.model);
@@ -159,12 +160,7 @@ function detectModel(stdinData) {
     return normalizeModel(projectSettings.model);
   }
 
-  // Source 5: Cached from SessionStart (always has the real model)
-  // This is critical: the default model depends on the plan.
-  // Pro plan default = sonnet (no model key in settings.json)
-  // Max plan default = opus (no model key in settings.json)
-  // SessionStart stdin always includes the actual model, so the cached
-  // value from session-model.txt is the ground truth.
+  // Source 5: Cached from SessionStart
   const cached = readText(MODEL_FILE);
   if (cached) return normalizeModel(cached);
 
@@ -172,9 +168,10 @@ function detectModel(stdinData) {
   if (process.env.ANTHROPIC_MODEL) return normalizeModel(process.env.ANTHROPIC_MODEL);
   if (process.env.CLAUDE_MODEL) return normalizeModel(process.env.CLAUDE_MODEL);
 
-  // No model detected anywhere — use "default" which maps to the
-  // fallback limit in config. Never hardcode opus/sonnet here because
-  // the plan's default model varies.
+  // Source 8: Plan default from config (detected during setup)
+  // Pro plan default = sonnet, Max plan default = opus
+  if (config && config.defaultModel) return normalizeModel(config.defaultModel);
+
   return "default";
 }
 
@@ -394,7 +391,7 @@ function triggerLogout() {
  */
 async function actionSync(config) {
   const stdinData = readStdin();
-  const model = detectModel(stdinData);
+  const model = detectModel(stdinData, config);
   writeText(MODEL_FILE, model);
   debugLog(`SYNC model=${model} source=${stdinData.source || "unknown"}`);
 
@@ -422,7 +419,7 @@ async function actionSync(config) {
  */
 async function actionCheck(config) {
   const stdinData = readStdin();
-  const model = detectModel(stdinData);
+  const model = detectModel(stdinData, config);
   const usage = loadUsage();
   debugLog(`CHECK model=${model} usage=${JSON.stringify(usage)}`);
 
@@ -471,7 +468,7 @@ async function actionCheck(config) {
  */
 async function actionCount(config) {
   const stdinData = readStdin();
-  const model = detectModel(stdinData);
+  const model = detectModel(stdinData, config);
   const usage = loadUsage();
   const prev = usage[model] || 0;
   usage[model] = prev + 1;
@@ -514,7 +511,7 @@ function actionEnforce() {
  * STATUS — Terminal command for humans.
  */
 function actionStatus(config) {
-  const model = detectModel({});
+  const model = detectModel({}, config);
   const usage = loadUsage();
   const userName = config.user_name || "Unknown";
   const serverConfig = readJSON(SERVER_FILE);

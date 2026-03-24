@@ -310,6 +310,43 @@ async function setup(flags) {
   log(C.bold("  ╚══════════════════════════════════════════╝"));
   log("");
 
+  // ── Pre-flight: Check Claude Code is installed and authenticated ──
+  let claudePath;
+  try {
+    claudePath = execSync("which claude 2>/dev/null || where claude 2>nul", { encoding: "utf-8" }).trim();
+  } catch {}
+
+  if (!claudePath) {
+    fail("Claude Code is not installed on this machine.");
+    log("");
+    info("Install it first: https://code.claude.com");
+    log("");
+    process.exit(1);
+  }
+  ok(`Claude Code found: ${claudePath}`);
+
+  let authStatus;
+  try {
+    authStatus = JSON.parse(execSync("claude auth status", { encoding: "utf-8" }).trim());
+  } catch {
+    authStatus = null;
+  }
+
+  if (!authStatus || !authStatus.loggedIn) {
+    fail("Claude Code is not logged in.");
+    log("");
+    info("Log in first:  claude auth login");
+    log("");
+    process.exit(1);
+  }
+  ok(`Logged in as: ${authStatus.email || "unknown"} (${authStatus.subscriptionType || "unknown"} plan)`);
+
+  // Detect default model from subscription type
+  const subscriptionType = authStatus.subscriptionType || "pro";
+  const defaultModel = subscriptionType === "max" ? "opus" : "sonnet";
+  info(`Plan default model: ${defaultModel}`);
+
+  // ── Get install code and server URL ──
   let code = flags.code;
   let serverUrl = flags.server;
 
@@ -383,6 +420,8 @@ async function setup(flags) {
     user_name,
     status: status || "active",
     debug: false,
+    defaultModel,
+    subscriptionType,
     limits: limits || [],
     credit_weights: credit_weights || { opus: 10, sonnet: 3, haiku: 1 },
   };
