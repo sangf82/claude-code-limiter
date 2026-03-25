@@ -46,25 +46,25 @@ Claude Code has **zero built-in usage controls**. No per-user limits. No quotas.
 It works by installing a system-level hook on each user's machine that checks limits on every prompt. The hook talks to a lightweight server you self-host. Users can't bypass it without the machine's root password.
 
 ```
-┌──────────────────────────────────────────────────────┐
-│              Your Server (Docker / Cloud)              │
-│  ┌─────────┐  ┌──────────┐  ┌─────────────────────┐  │
+┌───────────────────────────────────────────────────────┐
+│              Your Server (Docker / Cloud)             │
+│  ┌────────-─┐  ┌──────────┐  ┌─────────────────────┐  │
 │  │ REST API │  │  SQLite  │  │    Web Dashboard    │  │
 │  └────┬─────┘  └────┬─────┘  └──────────┬──────────┘  │
-│       └──────────────┴──────────────────┘              │
-└────────────┬─────────────┬──────────────┬──────────────┘
+│       └─────────────┴───────────────────┘             │
+└────────────┬─────────────┬──────────────┬─────────────┘
              │             │              │
-        ┌────┘      ┌─────┘       ┌──────┘
+        ┌────┘       ┌─────┘       ┌──────┘
         ▼            ▼             ▼
-   ┌─────────┐ ┌─────────┐ ┌───────────┐
-   │  Dev A's │ │  Dev B's│ │  Your     │
-   │  MacBook │ │  Laptop │ │  Browser  │
+   ┌──────────┐ ┌─────────┐ ┌────────────┐
+   │  Dev A's │ │  Dev B's│ │  Your      │
+   │  MacBook │ │  Laptop │ │  Browser   │
    │          │ │         │ │ (Dashboard)│
-   │ hook.js  │ │ hook.js │ └───────────┘
+   │ hook.js  │ │ hook.js │ └────────────┘
    │    ↕     │ │    ↕    │
    │  local   │ │  local  │
    │  cache   │ │  cache  │
-   └─────────┘ └─────────┘
+   └──────────┘ └─────────┘ 
 ```
 
 Hooks check local cache first (zero latency), sync with the server in the background, and fail-closed if anything is missing. Deleting local files doesn't reset counts — the server is the source of truth.
@@ -212,18 +212,18 @@ Every Claude Code prompt passes through four hook events:
 User types a prompt
         │
         ▼
-┌─ SessionStart ──────────────────────────────────┐
+┌─ SessionStart ───────────────────────────────────┐
 │  Captures active model (opus/sonnet/haiku)       │
 │  Syncs config + limits from server               │
 └──────────────────────────────────────────────────┘
         │
         ▼
-┌─ UserPromptSubmit (THE GATE) ───────────────────┐
+┌─ UserPromptSubmit (THE GATE) ────────────────────┐
 │  Calls server /check → "Is this prompt allowed?" │
 │  Server checks: status → time rules →            │
-│    per-model caps → credit budget                 │
-│  If denied → blocks with usage summary            │
-│  If server down → falls back to local cache       │
+│    per-model caps → credit budget                │
+│  If denied → blocks with usage summary           │
+│  If server down → falls back to local cache      │
 └──────────────────────────────────────────────────┘
         │ (allowed)
         ▼
@@ -233,9 +233,9 @@ User types a prompt
         │
         ▼
 ┌─ Stop ──────────────────────────────────────────┐
-│  Increments usage counter (local + server)       │
-│  One count per completed turn                    │
-└──────────────────────────────────────────────────┘
+│  Increments usage counter (local + server)      │
+│  One count per completed turn                   │
+└─────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
@@ -419,7 +419,7 @@ npx @howincodes/claude-code-limiter status
 
 ```
 ╔══════════════════════════════════════════════╗
-║     claude-code-limiter — Status              ║
+║     claude-code-limiter — Status             ║
 ╚══════════════════════════════════════════════╝
 
   User:          Alice
