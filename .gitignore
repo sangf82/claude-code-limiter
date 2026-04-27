@@ -8,3 +8,5 @@ debug.log
 .DS_Store
 tests/assumptions/logs/
 tests/assumptions/backups/
+.claude
+CLAUDE.md

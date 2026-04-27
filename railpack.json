@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "buildAptPackages": ["python3", "make", "g++"],
+  "packages": {
+    "node": "20"
+  },
+  "caches": {
+    "npm": {
+      "directory": "/root/.npm",
+      "type": "shared"
+    }
+  },
+  "steps": {
+    "install": {
+      "caches": ["npm"],
+      "commands": ["npm install"]
+    },
+    "build": {
+      "inputs": [{ "step": "install" }],
+      "commands": [
+        "npm run build --workspace=packages/dashboard",
+        "npm prune --omit=dev"
+      ]
+    }
+  },
+  "deploy": {
+    "startCommand": "node packages/server/bin/server.js",
+    "inputs": [
+      {
+        "step": "build",
+        "include": [
+          "node_modules",
+          "package.json",
+          "packages/server",
+          "packages/dashboard/dist"
+        ]
+      }
+    ],
+    "variables": {
+      "NODE_ENV": "production",
+      "DATA_DIR": "/data"
+    }
+  }
+}
