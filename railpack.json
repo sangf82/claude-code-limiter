@@ -13,6 +13,7 @@
   },
   "steps": {
     "install": {
+      "inputs": [{ "local": true }],
       "caches": ["npm"],
       "commands": ["npm install"]
     },
