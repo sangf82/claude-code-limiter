@@ -45,7 +45,7 @@ ENV DATA_DIR=/data
 EXPOSE 3000
 
 # SQLite database persisted via volume
-VOLUME ["/data"]
+# VOLUME ["/data"]
 
 # Healthcheck: verify the server responds
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
