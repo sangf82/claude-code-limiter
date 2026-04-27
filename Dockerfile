@@ -43,11 +43,7 @@ COPY --from=builder /app/packages/server/bin ./packages/server/bin
 # Built dashboard (server serves this at /dashboard)
 COPY --from=builder /app/packages/dashboard/dist ./packages/dashboard/dist
 
-# SQLite data dir (mount as Railway volume at /data)
-RUN mkdir -p /data && \
-    groupadd --system limiter && \
-    useradd --system --gid limiter --home /app limiter && \
-    chown -R limiter:limiter /app /data
+RUN mkdir -p /data
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
@@ -56,7 +52,5 @@ EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
-
-USER limiter
 
 CMD ["node", "packages/server/bin/server.js"]
